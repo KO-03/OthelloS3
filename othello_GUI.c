@@ -40,6 +40,9 @@
   fd_set master, read_fds, write_fds;	// ensembles de socket pour toutes les sockets actives avec select
   int fdmax;			// utilise pour select
 
+  int sockfd, rv;
+  struct addrinfo hints, *servinfo, *p;
+
 
 /* Variables globales associées à l'interface graphique */
   GtkBuilder  *  p_builder   = NULL;
@@ -292,6 +295,8 @@ static void coup_joueur(GtkWidget *p_case)
   
   // Traduction coordonnees damier en indexes matrice damier
   coord_to_indexes(gtk_buildable_get_name(GTK_BUILDABLE(gtk_bin_get_child(GTK_BIN(p_case)))), &col, &lig);
+
+  //printf("click joueur : %d / %d", col, lig);
   
 
   /***** TO DO *****/
@@ -377,7 +382,7 @@ void affiche_fenetre_perdu(void)
 /* Fonction appelee lors du clique du bouton Se connecter */
 static void clique_connect_serveur(GtkWidget *b)
 {
-  /***** TO DO *****/
+  printf("boutton connexion\n");
   
 }
 
@@ -570,6 +575,8 @@ void init_interface_jeu(void)
   set_score_J2(2);
   
   /***** TO DO *****/
+
+  // Logique des tours à coder
   
 }
 
@@ -597,6 +604,7 @@ void affich_joueur(char *login, char *adresse, char *port)
 /* Fonction exécutée par le thread gérant les communications à travers la socket */
 static void * f_com_socket(void *p_arg)
 {
+  printf("f_com_ enter\n");
   int i, nbytes, col, lig;
   
   char buf[MAXDATASIZE], *tmp, *p_parse;
@@ -658,18 +666,162 @@ static void * f_com_socket(void *p_arg)
         {
           /* Cas où de l'envoie du signal par l'interface graphique pour connexion au joueur adverse */
           
-          
           /***** TO DO *****/
-          
+          // addr_j2 port_j2
+
+          memset(&hints, 0, sizeof(hints));
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          rv = getaddrinfo(addr_j2, port_j2, &hints, &servinfo);
+
+          if(rv != 0) {
+            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+          }
+
+          for(p = servinfo; p != NULL; p = p->ai_next) 
+          {
+            if((newsockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+              perror("client: socket");
+              continue;
+            }
+            if((connect(newsockfd, p->ai_addr, p->ai_addrlen)) == -1) {
+              close(newsockfd);
+              perror("client: connect");
+              continue;
+            }
+            break;
+          }
+
+          if (p == NULL)
+						{
+							fprintf(stderr, "server : failed to bind\n");
+							return 2;
+						}
+
+						freeaddrinfo(servinfo);	//libère la structure
+
+						/*
+						 * Ajout descripteur du signal dans ensemble
+						 * de descripteur utilisé avec fonction select
+						 */
+						FD_SET(newsockfd, &master);
+
+						if (newsockfd > fdmax)
+						{
+							fdmax = newsockfd;
+						}
+
+						close(sockfd);
+						FD_CLR(sockfd, &master);
+
+						//fermeture et suppression de fd_signal de l'ensemble master
+						close(fd_signal);
+						FD_CLR(fd_signal, &master);
+
+						//Choix de couleur à compléter
+/*
+						set_couleur(0);
+						req.type = htons((uint16_t) TYPE_COULEUR);
+						req.couleur =
+							htons((uint16_t) get_couleur_adversaire());
+
+						bzero(buf, MAXDATASIZE);
+
+						printf("Requête à envoyer %u : %u\n", req.type,
+							   req.couleur);
+						snprintf(buf, MAXDATASIZE, "%u, %u", req.type,
+								 req.couleur);
+
+						printf("Envoyer requête %s\n", buf);
+						if (send(newsockfd, &buf, strlen(buf), 0) == -1)
+						{
+							perror("send");
+							close(newsockfd);
+						}
+*/
+						//initialisation interface graphique
+						init_interface_jeu();
+
         }
       
         if(i==sockfd)
         { // Acceptation connexion adversaire
-	  
-	    
-          /***** TO DO *****/
-	    
-          gtk_widget_set_sensitive((GtkWidget *) gtk_builder_get_object (p_builder, "button_start"), FALSE);
+        
+        /***** TO DO *****/
+          if (newsockfd == -1)
+					{
+						addr_size = sizeof(their_addr);
+						/*
+						 * Accepte une connexion client
+						 * et retourne nouveau descripteur de socket de service
+						 * pour traiter la requête du client
+						 * Fonction bloquante
+						 * @param1 socket d'écoute côté serveur
+						 * @param2 structure adresse + port du client
+						 * @param3 taille du param2 (cf ci-dessus)
+						 */
+						newsockfd =
+							accept(sockfd, their_addr,
+								   (socklen_t *) & addr_size);
+
+
+						if (newsockfd == -1)
+						{
+							perror("problème avec accept");
+						}
+						else
+						{
+							/*
+							 * Ajout du nouveau descripteur dans ensemble
+							 * de descripteur utilisé avec fonction select
+							 */
+							FD_SET(newsockfd, &master);
+
+							if (newsockfd > fdmax)
+							{
+								fdmax = newsockfd;
+							}
+
+							//
+
+
+							//fermeture socket écoute car connexion déjà établie avec adversaire
+							printf
+								("[Port joueur : %d] Bloc if du serveur, fermeture socket écoute\n",
+								 port);
+							FD_CLR(sockfd, &master);
+							close(sockfd);
+						}
+
+						//fermeture et suppression de FD_SIGNAL de l'ensemble master
+						close(fd_signal);
+						FD_CLR(fd_signal, &master);
+
+						// Réception et traitement des messages du joueur adverse
+						bzero(buf, MAXDATASIZE);
+						recv(newsockfd, buf, MAXDATASIZE, 0);
+/*
+						token = strtok_r(buf, ",", &saveptr);
+						sscanf(token, "%u", &(req.type));
+						req.type = ntohs(req.type);
+						printf("type message %u\n", req.type);
+
+						if (req.type == 0)
+						{
+							token = strtok_r(NULL, ",", &saveptr);
+							sscanf(token, "%u", &(req.couleur));
+							req.couleur = ntohs(req.couleur);
+							printf("couleur %u\n", req.couleur);
+							set_couleur(req.couleur);
+						}
+*/
+						init_interface_jeu();
+
+						gtk_widget_set_sensitive((GtkWidget *)
+												 gtk_builder_get_object
+												 (p_builder, "button_start"),
+												 FALSE);
+					}
         }
         else
         { // Reception et traitement des messages du joueur adverse
@@ -689,137 +841,197 @@ static void * f_com_socket(void *p_arg)
 
 int main (int argc, char ** argv)
 {
-   int i, j, ret;
+  int i, j, ret;
 
-   if(argc!=2)
-   {
-     printf("\nPrototype : ./othello num_port\n\n");
-     
-     exit(1);
-   }
-   
-   
-   /* Initialisation de GTK+ */
-   gtk_init (& argc, & argv);
-   
-   /* Creation d'un nouveau GtkBuilder */
-   p_builder = gtk_builder_new();
- 
-   if (p_builder != NULL)
-   {
-      /* Chargement du XML dans p_builder */
-      gtk_builder_add_from_file (p_builder, "UI_Glade/Othello.glade", & p_err);
- 
-      if (p_err == NULL)
+  if(argc!=2)
+  {
+    printf("\nPrototype : ./othello num_port\n\n");
+    
+    exit(1);
+  }
+
+  
+
+  /* Initialisation de GTK+ */
+  gtk_init (& argc, & argv);
+  
+  /* Creation d'un nouveau GtkBuilder */
+  p_builder = gtk_builder_new();
+
+  if (p_builder != NULL)
+  {
+    /* Chargement du XML dans p_builder */
+    gtk_builder_add_from_file (p_builder, "UI_Glade/Othello.glade", & p_err);
+
+    if (p_err == NULL)
+    {
+      /* Recuparation d'un pointeur sur la fenetre. */
+      GtkWidget * p_win = (GtkWidget *) gtk_builder_get_object (p_builder, "window1");
+
+
+      /* Gestion evenement clic pour chacune des cases du damier */
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
+      
+      /* Gestion clic boutons interface */
+      g_signal_connect(gtk_builder_get_object(p_builder, "button_connect"), "clicked", G_CALLBACK(clique_connect_serveur), NULL);
+      g_signal_connect(gtk_builder_get_object(p_builder, "button_start"), "clicked", G_CALLBACK(clique_connect_adversaire), NULL);
+      
+      /* Gestion clic bouton fermeture fenetre */
+      g_signal_connect_swapped(G_OBJECT(p_win), "destroy", G_CALLBACK(gtk_main_quit), NULL);
+      
+      
+      
+      /* Recuperation numero port donne en parametre */
+      port=atoi(argv[1]);
+      
+      /* Initialisation du damier de jeu */
+      for(i=0; i<8; i++)
       {
-         /* Recuparation d'un pointeur sur la fenetre. */
-         GtkWidget * p_win = (GtkWidget *) gtk_builder_get_object (p_builder, "window1");
-
- 
-         /* Gestion evenement clic pour chacune des cases du damier */
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH2"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH3"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH4"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH5"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH6"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH7"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxB8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxC8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxD8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxE8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxF8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxG8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "eventboxH8"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
-         
-         /* Gestion clic boutons interface */
-         g_signal_connect(gtk_builder_get_object(p_builder, "button_connect"), "clicked", G_CALLBACK(clique_connect_serveur), NULL);
-         g_signal_connect(gtk_builder_get_object(p_builder, "button_start"), "clicked", G_CALLBACK(clique_connect_adversaire), NULL);
-         
-         /* Gestion clic bouton fermeture fenetre */
-         g_signal_connect_swapped(G_OBJECT(p_win), "destroy", G_CALLBACK(gtk_main_quit), NULL);
-         
-         
-         
-         /* Recuperation numero port donne en parametre */
-         port=atoi(argv[1]);
-          
-         /* Initialisation du damier de jeu */
-         for(i=0; i<8; i++)
-         {
-           for(j=0; j<8; j++)
-           {
-             damier[i][j]=-1; 
-           }  
-         }
-
-     
-         /***** TO DO *****/
-         
-         // Initialisation socket et autres objets, et création thread pour communications avec joueur adverse
-       
-	 
-         gtk_widget_show_all(p_win);
-         gtk_main();
+        for(j=0; j<8; j++)
+        {
+          damier[i][j]=-1; 
+        }  
       }
-      else
-      {
-         /* Affichage du message d'erreur de GTK+ */
-         g_error ("%s", p_err->message);
-         g_error_free (p_err);
+      
+      //init_interface_jeu();
+
+      /***** TO DO *****/
+      
+      // Initialisation socket et autres objets, et création thread pour communications avec joueur adverse
+
+      memset(&hints, 0, sizeof(hints));	//idem que ci-dessus
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = SOCK_STREAM;
+			hints.ai_flags = AI_PASSIVE;	//trouve automatiquement mon IP
+
+			// car premier param de getaddrinfo = NULL
+			if (getaddrinfo(NULL, argv[1], &hints, &servinfo) != 0)
+			{
+				perror("server: getaddrinfo");
+				return 1;
+			}
+			// Création socket et attachement
+			for (p = servinfo; p != NULL; p = p->ai_next)
+			{
+				if ((sockfd =
+					 socket(p->ai_family, p->ai_socktype,
+							p->ai_protocol)) == -1)
+				{
+					perror("server: socket");
+					continue;
+				}
+				if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1)	//attachement de la socket - serveur
+				{
+					close(sockfd);
+					//FD_CLR(sockfd, &master);
+					perror("server: bind");
+					continue;
+				}
+				printf("[Port joueur : %s] Ok socket correct\n", argv[1]);
+				break;
+			}
+			if (p == NULL)
+			{
+				fprintf(stderr, "server: failed to bind\n");
+				return 2;
+			}
+			freeaddrinfo(servinfo);	// Libère structure
+			/*
+			 * le serveur ecoute et est en attente d'une demande de connexion
+			 * socket d'écoute cote serveur
+			 * Fonction bloquante
+			 * @param2 est nombre max de connexion en attente de traitement
+			 */
+			listen(sockfd, 1);
+
+			FD_ZERO(&master);
+			FD_ZERO(&read_fds);
+
+			/*
+			 * Ajout descripteur du signal dans ensemble
+			 * de descripteur utilisé avec fonction select
+			 */
+			FD_SET(sockfd, &master);
+			read_fds = master;	//copie des ensembles
+			fdmax = sockfd;
+
+      if(pthread_create(&thr_id, NULL, f_com_socket, NULL) == -1)  {
+        perror("Thread create error\n");
       }
-   }
- 
- 
-   return EXIT_SUCCESS;
+
+      gtk_widget_show_all(p_win);
+      gtk_main();
+    }
+    else
+    {
+      /* Affichage du message d'erreur de GTK+ */
+      g_error ("%s", p_err->message);
+      g_error_free (p_err);
+    }
+  }
+
+  return EXIT_SUCCESS;
 }
