@@ -18,8 +18,15 @@
 
 #include <gtk/gtk.h>
 
-
+#define TYPE_COORD 1
 #define MAXDATASIZE 256
+
+
+struct coup {
+  uint16_t couleur;
+	uint16_t x;
+	uint16_t y;
+};
 
 
 /* Variables globales */
@@ -29,6 +36,9 @@
   int port;		// numero port passé lors de l'appel
 
   char *addr_j2, *port_j2;	// Info sur adversaire
+
+	char *token;
+	char *saveptr;
 
 
   pthread_t thr_id;	// Id du thread fils gerant connexion socket
@@ -124,6 +134,10 @@ void reset_liste_joueurs(void);
 /* Fonction permettant d'ajouter un joueur dans la liste des joueurs sur l'interface graphique */
 void affich_joueur(char *login, char *adresse, char *port);
 
+//
+
+/* Fonction permettant de poser un jeton */
+void poser_jeton(int col, int lig, int couleur_j);
 
 
 /* Fonction transforme coordonnees du damier graphique en indexes pour matrice du damier */
@@ -287,21 +301,56 @@ int get_score_J2(void)
 }
 
 
+void poser_jeton(int col, int lig, int couleur_j) {
+  damier[col][lig] = couleur_j;
+  change_img_case(col, lig, couleur_j);
+}
+
+
 /* Fonction appelee lors du clique sur une case du damier */
 static void coup_joueur(GtkWidget *p_case)
 {
   int col, lig, type_msg, nb_piece, score;
   char buf[MAXDATASIZE];
+
+  struct coup coup;
   
   // Traduction coordonnees damier en indexes matrice damier
   coord_to_indexes(gtk_buildable_get_name(GTK_BUILDABLE(gtk_bin_get_child(GTK_BIN(p_case)))), &col, &lig);
 
-  //printf("click joueur : %d / %d", col, lig);
-  
+  printf("click joueur : col:%d / lig:%d\n", col, lig);
+  printf("Couleur coup joueur : %u \n", couleur);
 
+  if(damier[col][lig] == -1 ) {
+    printf("damier = %u \n", damier[col][lig]);
+    poser_jeton(col, lig, couleur);
+
+    printf("Info à envoyer : %u %u\n", col, lig);
+
+    //préparation message et envoie sur socket à adversaire
+    coup.x = htons((uint16_t) col);
+    coup.y = htons((uint16_t) lig);
+    coup.couleur = htons((uint16_t) couleur);
+    printf("Requête à envoyer %u : %u %u\n", coup.couleur, coup.x, coup.y);
+    bzero(buf, MAXDATASIZE);
+    snprintf(buf, MAXDATASIZE, "%u, %u, %u", coup.couleur, coup.x, coup.y);
+
+    printf("Envoyer requête %s\n", buf);
+    if (send(newsockfd, &buf, strlen(buf), 0) == -1)
+    {
+      perror("send");
+      close(newsockfd);
+    }
+
+    gele_damier();
+  }
+
+
+  
   /***** TO DO *****/
     
 }
+
 
 /* Fonction retournant texte du champs adresse du serveur de l'interface graphique */
 char *lecture_addr_serveur(void)
@@ -558,6 +607,10 @@ void init_interface_jeu(void)
   change_img_case(4, 3, 0);
   change_img_case(3, 4, 0);
   change_img_case(4, 4, 1);
+  damier[3][3] = 1;
+  damier[4][3] = 0;
+  damier[3][4] = 0;
+  damier[4][4] = 1;
   
   // Initialisation des scores et des joueurs
   if(couleur==1)
@@ -573,6 +626,8 @@ void init_interface_jeu(void)
 
   set_score_J1(2);
   set_score_J2(2);
+
+  degele_damier();
   
   /***** TO DO *****/
 
@@ -615,6 +670,8 @@ static void * f_com_socket(void *p_arg)
   
   uint16_t type_msg, col_j2;
   uint16_t ucol, ulig;
+
+  struct coup coup;
   
   /* Association descripteur au signal SIGUSR1 */
   sigemptyset(&signal_mask);
@@ -667,8 +724,6 @@ static void * f_com_socket(void *p_arg)
           /* Cas où de l'envoie du signal par l'interface graphique pour connexion au joueur adverse */
           
           /***** TO DO *****/
-          // addr_j2 port_j2
-
           memset(&hints, 0, sizeof(hints));
           hints.ai_family = AF_UNSPEC;
           hints.ai_socktype = SOCK_STREAM;
@@ -721,7 +776,7 @@ static void * f_com_socket(void *p_arg)
 						//Choix de couleur à compléter
 /*
 						set_couleur(0);
-						req.type = htons((uint16_t) TYPE_COULEUR);
+						req.type = htons((uint16_t) 0);
 						req.couleur =
 							htons((uint16_t) get_couleur_adversaire());
 
@@ -738,10 +793,12 @@ static void * f_com_socket(void *p_arg)
 							perror("send");
 							close(newsockfd);
 						}
-*/
+*/          
+            // Le joueur qui se connecte prendra la couleur noir
+            couleur = 0;
+            printf("couleur intit : %d", couleur);
 						//initialisation interface graphique
 						init_interface_jeu();
-
         }
       
         if(i==sockfd)
@@ -760,9 +817,7 @@ static void * f_com_socket(void *p_arg)
 						 * @param2 structure adresse + port du client
 						 * @param3 taille du param2 (cf ci-dessus)
 						 */
-						newsockfd =
-							accept(sockfd, their_addr,
-								   (socklen_t *) & addr_size);
+						newsockfd = accept(sockfd, their_addr, (socklen_t *) & addr_size);
 
 
 						if (newsockfd == -1)
@@ -782,45 +837,26 @@ static void * f_com_socket(void *p_arg)
 								fdmax = newsockfd;
 							}
 
-							//
-
-
 							//fermeture socket écoute car connexion déjà établie avec adversaire
-							printf
-								("[Port joueur : %d] Bloc if du serveur, fermeture socket écoute\n",
-								 port);
-							FD_CLR(sockfd, &master);
+							printf("[Port joueur : %d] Bloc if du serveur, fermeture socket écoute\n", port);
 							close(sockfd);
+							FD_CLR(sockfd, &master);
 						}
 
 						//fermeture et suppression de FD_SIGNAL de l'ensemble master
 						close(fd_signal);
 						FD_CLR(fd_signal, &master);
 
-						// Réception et traitement des messages du joueur adverse
-						bzero(buf, MAXDATASIZE);
-						recv(newsockfd, buf, MAXDATASIZE, 0);
-/*
-						token = strtok_r(buf, ",", &saveptr);
-						sscanf(token, "%u", &(req.type));
-						req.type = ntohs(req.type);
-						printf("type message %u\n", req.type);
-
-						if (req.type == 0)
-						{
-							token = strtok_r(NULL, ",", &saveptr);
-							sscanf(token, "%u", &(req.couleur));
-							req.couleur = ntohs(req.couleur);
-							printf("couleur %u\n", req.couleur);
-							set_couleur(req.couleur);
-						}
-*/
+            // Blanc pour celui qui accepte
+            couleur = 1;
+            printf("couleur intit j2 : %d", couleur);
 						init_interface_jeu();
 
-						gtk_widget_set_sensitive((GtkWidget *)
-												 gtk_builder_get_object
-												 (p_builder, "button_start"),
-												 FALSE);
+						gtk_widget_set_sensitive((GtkWidget *) gtk_builder_get_object (p_builder, "button_start"), FALSE);
+
+            gele_damier();
+
+            printf("[Port joueur : %d] Bloc if du serveur, fermeture socket écoute FF\n", port);
 					}
         }
         else
@@ -828,8 +864,41 @@ static void * f_com_socket(void *p_arg)
       
       
           /***** TO DO *****/
+          if (i == newsockfd)
+					{
+						printf("else suite\n");
+						// Réception et traitement des messages du joueur adverse
+						bzero(buf, MAXDATASIZE);
+						nbytes = recv(newsockfd, buf, MAXDATASIZE, 0);
 
-	    
+						printf("reception de %d octets reçus\n", nbytes);
+
+						token = strtok_r(buf, ",", &saveptr);
+						sscanf(token, "%u", &(coup.couleur));
+            printf("type message %u\n", coup.couleur);
+						coup.couleur = ntohs(coup.couleur);
+						printf("type message %u\n", coup.couleur);
+
+							token = strtok_r(NULL, ",", &saveptr);
+							sscanf(token, "%u", &(coup.x));
+							coup.x = ntohs(coup.x);
+							printf("x %u\n", coup.x);
+
+							token = strtok_r(NULL, ",", &saveptr);
+							sscanf(token, "%u", &(coup.y));
+							coup.y = ntohs(coup.y);
+							printf("y %u\n", coup.y);
+              
+              int couleur_adversaire = 0;
+              if(couleur == 0)
+                couleur_adversaire = 1;
+              else
+                couleur_adversaire = 0;
+
+							poser_jeton(coup.x, coup.y, coup.couleur);
+							degele_damier();
+						
+          }
         }
       }
     }
@@ -850,8 +919,6 @@ int main (int argc, char ** argv)
     exit(1);
   }
 
-  
-
   /* Initialisation de GTK+ */
   gtk_init (& argc, & argv);
   
@@ -867,7 +934,6 @@ int main (int argc, char ** argv)
     {
       /* Recuparation d'un pointeur sur la fenetre. */
       GtkWidget * p_win = (GtkWidget *) gtk_builder_get_object (p_builder, "window1");
-
 
       /* Gestion evenement clic pour chacune des cases du damier */
       g_signal_connect(gtk_builder_get_object(p_builder, "eventboxA1"), "button_press_event", G_CALLBACK(coup_joueur), NULL);
@@ -941,11 +1007,16 @@ int main (int argc, char ** argv)
       
       /* Gestion clic bouton fermeture fenetre */
       g_signal_connect_swapped(G_OBJECT(p_win), "destroy", G_CALLBACK(gtk_main_quit), NULL);
-      
-      
-      
+     
       /* Recuperation numero port donne en parametre */
       port=atoi(argv[1]);
+
+      // titre fenetre avec numero de port
+      char title[100];
+			strcpy(title, "Othello | Jeu - ");
+			strcat(title, argv[1]);
+
+			gtk_window_set_title(GTK_WINDOW(p_win), title);
       
       /* Initialisation du damier de jeu */
       for(i=0; i<8; i++)
