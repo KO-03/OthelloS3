@@ -32,6 +32,7 @@ struct coup {
 	uint16_t couleur;
 };
 
+
 /* Variables globales */
 int damier[8][8]; //car Plateau de dimension 8*8
 int couleur;
@@ -438,6 +439,7 @@ static void coup_joueur(GtkWidget * p_case) {
 		}
 	}
 }
+
 
 /* Fonction retournant texte du champs adresse du serveur de l'interface graphique */
 char *lecture_addr_serveur(void) {
