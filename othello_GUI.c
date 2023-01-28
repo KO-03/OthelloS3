@@ -17,19 +17,23 @@
 
 #include <stdbool.h> //librairie boolean
 
+/* include pour l'implementation thread safe des mise à jour de l'interface GTK */
+#include <glib.h>
+#include <X11/Xlib.h>
+
 #define MAXDATASIZE 256
 
-#define TYPE_COULEUR 0
-#define TYPE_COORD 1
-#define TYPE_IMPOSSIBILITE_COUP 2
-#define TYPE_FIN 3
+#define SET_COULEUR 0
+#define COUP_JOUEUR 1
+#define COUP_IMPOSSIBLE 2
+#define FIN_PARTIE 3
 
 
-struct coup {
-	uint16_t type;				//0 pour la couleur, 1 pour les coordonnees x, y
-	uint16_t x;
-	uint16_t y;
-	uint16_t couleur;
+struct message { // structure unique pour différents type d'évènements
+	uint16_t event;				//0 pour la couleur, 1 pour les coordonnees x, y
+	uint16_t x; // x, y envoyé pour les évènements coup joueur
+	uint16_t y; 
+	uint16_t couleur; // pour initialiser les couleurs de chaque joueur
 };
 
 
@@ -323,7 +327,7 @@ static void coup_joueur(GtkWidget * p_case) {
 	char buf[MAXDATASIZE];
 
 	//ajout initiasation requete
-	struct coup req;
+	struct message msg;
 
 	// Traduction coordonnees damier en indexes matrice damier
 	coord_to_indexes(gtk_buildable_get_name(GTK_BUILDABLE(gtk_bin_get_child(GTK_BIN(p_case)))), &col, &lig);
@@ -340,11 +344,11 @@ static void coup_joueur(GtkWidget * p_case) {
 		gele_damier();
 
 		//préparation message et envoie sur socket à adversaire
-		req.type = htons((uint16_t) TYPE_FIN);
+		msg.event = htons((uint16_t) FIN_PARTIE);
 
-		printf("Requête à envoyer %u\n", req.type);
+		printf("Requête à envoyer %u\n", msg.event);
 		bzero(buf, MAXDATASIZE);
-		snprintf(buf, MAXDATASIZE, "%u", req.type);
+		snprintf(buf, MAXDATASIZE, "%u", msg.event);
 
 		printf("Envoyer requête %s\n", buf);
 		if (send(newsockfd, &buf, strlen(buf), 0) == -1)
@@ -374,11 +378,11 @@ static void coup_joueur(GtkWidget * p_case) {
 		}
 
 		//préparation message et envoie sur socket à adversaire
-		req.type = htons((uint16_t) TYPE_FIN);
+		msg.event = htons((uint16_t) FIN_PARTIE);
 
-		printf("Requête à envoyer %u\n", req.type);
+		printf("Requête à envoyer %u\n", msg.event);
 		bzero(buf, MAXDATASIZE);
-		snprintf(buf, MAXDATASIZE, "%u", req.type);
+		snprintf(buf, MAXDATASIZE, "%u", msg.event);
 
 		printf("Envoyer requête %s\n", buf);
 		if (send(newsockfd, &buf, strlen(buf), 0) == -1)
@@ -398,11 +402,11 @@ static void coup_joueur(GtkWidget * p_case) {
 		gele_damier();
 
 		//préparation message et envoie sur socket à adversaire
-		req.type = htons((uint16_t) TYPE_IMPOSSIBILITE_COUP);
+		msg.event = htons((uint16_t) COUP_IMPOSSIBLE);
 
-		printf("Requête à envoyer %u\n", req.type);
+		printf("Requête à envoyer %u\n", msg.event);
 		bzero(buf, MAXDATASIZE);
-		snprintf(buf, MAXDATASIZE, "%u", req.type);
+		snprintf(buf, MAXDATASIZE, "%u", msg.event);
 
 		printf("Envoyer requête %s\n", buf);
 		if (send(newsockfd, &buf, strlen(buf), 0) == -1)
@@ -429,12 +433,12 @@ static void coup_joueur(GtkWidget * p_case) {
 			printf("Info à envoyer : %u %u\n", col, lig);
 
 			//préparation message et envoie sur socket à adversaire
-			req.type = htons((uint16_t) TYPE_COORD);
-			req.x = htons((uint16_t) col);
-			req.y = htons((uint16_t) lig);
-			printf("Requête à envoyer %u : %u %u\n", req.type, req.x, req.y);
+			msg.event = htons((uint16_t) COUP_JOUEUR);
+			msg.x = htons((uint16_t) col);
+			msg.y = htons((uint16_t) lig);
+			printf("Requête à envoyer %u : %u %u\n", msg.event, msg.x, msg.y);
 			bzero(buf, MAXDATASIZE);
-			snprintf(buf, MAXDATASIZE, "%u, %u, %u", req.type, req.x, req.y);
+			snprintf(buf, MAXDATASIZE, "%u, %u, %u", msg.event, msg.x, msg.y);
 
 			printf("Envoyer requête %s\n", buf);
 			if (send(newsockfd, &buf, strlen(buf), 0) == -1)
@@ -668,7 +672,7 @@ static void *f_com_socket(void *p_arg) {
 	char *saveptr;
 
 	//ajout initiasation requete
-	struct coup req;
+	struct message msg;
 
 	/* Association descripteur au signal SIGUSR1 */
 	sigemptyset(&signal_mask);
@@ -770,19 +774,17 @@ static void *f_com_socket(void *p_arg) {
 						close(fd_signal);
 						FD_CLR(fd_signal, &master);
 
-						//Choix de couleur à compléter
-
 						set_couleur(0);
-						req.type = htons((uint16_t) TYPE_COULEUR);
-						req.couleur =
+						msg.event = htons((uint16_t) SET_COULEUR);
+						msg.couleur =
 							htons((uint16_t) get_couleur_adversaire());
 
 						bzero(buf, MAXDATASIZE);
 
-						printf("Requête à envoyer %u : %u\n", req.type,
-							   req.couleur);
-						snprintf(buf, MAXDATASIZE, "%u, %u", req.type,
-								 req.couleur);
+						printf("Requête à envoyer %u : %u\n", msg.event,
+							   msg.couleur);
+						snprintf(buf, MAXDATASIZE, "%u, %u", msg.event,
+								 msg.couleur);
 
 						printf("Envoyer requête %s\n", buf);
 						if (send(newsockfd, &buf, strlen(buf), 0) == -1)
@@ -853,17 +855,17 @@ static void *f_com_socket(void *p_arg) {
 						recv(newsockfd, buf, MAXDATASIZE, 0);
 
 						token = strtok_r(buf, ",", &saveptr);
-						sscanf(token, "%u", &(req.type));
-						req.type = ntohs(req.type);
-						printf("type message %u\n", req.type);
+						sscanf(token, "%u", &(msg.event));
+						msg.event = ntohs(msg.event);
+						printf("type message %u\n", msg.event);
 
-						if (req.type == 0)
+						if (msg.event == SET_COULEUR)
 						{
 							token = strtok_r(NULL, ",", &saveptr);
-							sscanf(token, "%u", &(req.couleur));
-							req.couleur = ntohs(req.couleur);
-							printf("couleur %u\n", req.couleur);
-							set_couleur(req.couleur);
+							sscanf(token, "%u", &(msg.couleur));
+							msg.couleur = ntohs(msg.couleur);
+							printf("couleur %u\n", msg.couleur);
+							set_couleur(msg.couleur);
 						}
 
 						init_interface_jeu();
@@ -886,34 +888,34 @@ static void *f_com_socket(void *p_arg) {
 						printf("reception de %d octets reçus\n", nbytes);
 
 						token = strtok_r(buf, ",", &saveptr);
-						sscanf(token, "%u", &(req.type));
-						req.type = ntohs(req.type);
-						printf("type message %u\n", req.type);
+						sscanf(token, "%u", &(msg.event));
+						msg.event = ntohs(msg.event);
+						printf("type message %u\n", msg.event);
 
-						if (req.type == TYPE_COORD)
+						if (msg.event == COUP_JOUEUR)
 						{
 							token = strtok_r(NULL, ",", &saveptr);
-							sscanf(token, "%u", &(req.x));
-							req.x = ntohs(req.x);
-							printf("x %u\n", req.x);
+							sscanf(token, "%u", &(msg.x));
+							msg.x = ntohs(msg.x);
+							printf("x %u\n", msg.x);
 
 							token = strtok_r(NULL, ",", &saveptr);
-							sscanf(token, "%u", &(req.y));
-							req.y = ntohs(req.y);
-							printf("y %u\n", req.y);
-							set_case(req.x, req.y, get_couleur_adversaire());
-							changements_case(req.x, req.y,
+							sscanf(token, "%u", &(msg.y));
+							msg.y = ntohs(msg.y);
+							printf("y %u\n", msg.y);
+							set_case(msg.x, msg.y, get_couleur_adversaire());
+							changements_case(msg.x, msg.y,
 											 get_couleur_adversaire());
 							degele_damier();
 							indic_jouable(get_couleur());
 						}
-						else if (req.type == TYPE_IMPOSSIBILITE_COUP)
+						else if (msg.event == COUP_IMPOSSIBLE)
 						{
 							printf("adversaire n'a pas plus jouer\n");
 							degele_damier();
 							indic_jouable(get_couleur());
 						}
-						else if (req.type == TYPE_FIN)
+						else if (msg.event == FIN_PARTIE)
 						{
 							printf("fin du jeu\n");
 							degele_damier();
@@ -1291,6 +1293,8 @@ int main(int argc, char **argv) {
 			g_error_free(p_err);
 		}
 	}
+
+	pthread_join(thr_id, NULL);
 
 
 	return EXIT_SUCCESS;
