@@ -181,6 +181,9 @@ void poser_jeton(int col, int lig, int couleur_j);
 /* Fonction indiquant les cases jouables */
 void indic_jouable(int couleur_j);
 
+/* Fonction pour remettre les cases par défaut pendant le gele du damier*/
+void reset_case_jouable();
+
 /* -------------------------------------------------- FIN DES ENTETES DES FONCTIONS -------------------------------------------------- */
 
 /* ------------------------------------------------------- DEBUT DES FONCTIONS ------------------------------------------------------- */
@@ -333,6 +336,7 @@ static void coup_joueur(GtkWidget * p_case) {
 	*/
 	if (fin_partie())
 	{
+		reset_case_jouable();
 		gele_damier();
 
 		//préparation message et envoie sur socket à adversaire
@@ -390,6 +394,7 @@ static void coup_joueur(GtkWidget * p_case) {
 	/* Cas où un joueur ne peut pas jouer */
 	else if (coup_impossible())
 	{
+		reset_case_jouable();
 		gele_damier();
 
 		//préparation message et envoie sur socket à adversaire
@@ -416,6 +421,7 @@ static void coup_joueur(GtkWidget * p_case) {
 		{
 			//change la case
 			set_case(col, lig, get_couleur());
+			reset_case_jouable();
 			gele_damier();
 			//déterminer pions dont la couleur change + score
 			changements_case(col, lig, get_couleur());
@@ -1123,21 +1129,36 @@ void indic_jouable(int couleur_j) {
 				)
 			{
 				indexes_to_coord(i, j, coord);
-				gtk_image_set_from_file(GTK_IMAGE
-										(gtk_builder_get_object(p_builder, coord)),
-										"UI_Glade/case_jouable.png");
+				gtk_image_set_from_file(GTK_IMAGE (gtk_builder_get_object(p_builder, coord)), "UI_Glade/case_jouable.png");
 			}
 			if ((return_couleur_case(i, j) == -1)
 				&& !(coup_valide(i, j, couleur_j))
 				)
 			{
 				indexes_to_coord(i, j, coord);
-				gtk_image_set_from_file(GTK_IMAGE
-										(gtk_builder_get_object(p_builder, coord)),
-										"UI_Glade/case_def.png");
+				gtk_image_set_from_file(GTK_IMAGE (gtk_builder_get_object(p_builder, coord)), "UI_Glade/case_def.png");
 			}
 		}
 	}
+}
+
+void reset_case_jouable() {
+	char *coord;
+	int i, j;
+
+	coord = malloc(3* sizeof(char));
+	
+	for (i = 0; i < 8; ++i)
+	{
+		for (j = 0; j < 8; ++j)
+		{
+			if (return_couleur_case(i, j) == -1)
+			{
+				indexes_to_coord(i, j, coord);
+				gtk_image_set_from_file(GTK_IMAGE (gtk_builder_get_object(p_builder, coord)), "UI_Glade/case_def.png");
+			}
+		}
+	}	
 }
 
 /* ---------------------------------------------- FIN DES FONCTIONS ---------------------------------------------- */
