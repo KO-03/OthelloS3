@@ -30,7 +30,7 @@
 
 
 struct message { // structure unique pour différents type d'évènements
-	uint16_t event;				//0 pour la couleur, 1 pour les coordonnees x, y
+	uint16_t event;				//0 pour la couleur / 1 pour les coordonnees x, y / 2 et 3 pour les fins de jeu
 	uint16_t x; // x, y envoyé pour les évènements coup joueur
 	uint16_t y; 
 	uint16_t couleur; // pour initialiser les couleurs de chaque joueur
@@ -153,7 +153,7 @@ bool change_ligne(int colonne, int ligne, int chmtx, int chmty, int couleur);
 void changements_case(int colonne, int ligne, int couleur);
 
 /* Fonction changeant la couleur des cases dans la direction choisie */
-void changement_case(int colonne, int ligne, int chmtx, int chmty, int couleur);
+void changement_case(int colonne, int ligne, int xBis, int yBis, int couleur);
 
 /* Fonction permettant de savoir si on peut encore placer des pieces */
 bool fin_partie();
@@ -938,9 +938,9 @@ bool coup_valide(int col, int lig, int couleur_joueur) {
 				|| change_ligne(col, lig, 0, -1, couleur_joueur)
 				|| change_ligne(col, lig, 1, -1, couleur_joueur)
 				|| change_ligne(col, lig, -1, 0, couleur_joueur)
+				|| change_ligne(col, lig, 0, 1, couleur_joueur)
 				|| change_ligne(col, lig, 1, 0, couleur_joueur)
 				|| change_ligne(col, lig, -1, 1, couleur_joueur)
-				|| change_ligne(col, lig, 0, 1, couleur_joueur)
 				|| change_ligne(col, lig, 1, 1, couleur_joueur)));
 }
 
@@ -1023,14 +1023,15 @@ void changements_case(int colonne, int ligne, int couleur) {
 }
 
 /* Fonction changeant la couleur des cases dans la bonne direction */
-void changement_case(int colonne, int ligne, int chmtx, int chmty, int couleur) {
+void changement_case(int colonne, int ligne, int xBis, int yBis, int couleur) {
+	ligne += yBis;
+	colonne += xBis;
 
-	colonne += chmtx;
-	ligne += chmty;
+	// 
 	while (return_couleur_case(colonne, ligne) == get_couleur_adverse(couleur)) {
 		set_case(colonne, ligne, couleur);
-		colonne += chmtx;
-		ligne += chmty;
+		colonne += xBis;
+		ligne += yBis;
 	}
 }
 
